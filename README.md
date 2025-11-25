@@ -47,6 +47,22 @@ This will:
 - `covers/` - HD cover images
 - `import_summary.json` - Import statistics
 
+### Language filtering & metadata-only runs
+
+You can now fine-tune the import directly from the CLI:
+
+```bash
+python3 run_import.py \
+  --target-books 800 \
+  --languages en \
+  --skip-downloads \
+  --download-dir /path/to/custom/location
+```
+
+- `--languages` — Comma-separated ISO codes (e.g., `en,fr`). Leave empty to allow every language.
+- `--skip-downloads` — Collect metadata only and skip PDF/cover downloads.
+- `--download-dir` — Store outputs anywhere (defaults to `<repo>/books`).
+
 ### Google Colab
 
 ```python

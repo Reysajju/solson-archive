@@ -150,3 +150,9 @@ tmp/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Allow curated dataset exports to be versioned
+!datasets/
+!datasets/**/*.csv
+!datasets/**/*.json
+!datasets/**/*.md
