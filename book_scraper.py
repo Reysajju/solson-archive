@@ -17,7 +17,7 @@ import pandas as pd
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 import logging
 
 # For web scraping
@@ -78,12 +78,13 @@ class BookScraper:
             filename = filename[:200]
         return filename
     
-    def scrape_archive_org(self, max_books: int = 500) -> List[Dict]:
-        """Scrape free books from archive.org"""
+    def scrape_archive_org(self, max_books: int = 500, existing_ids: Optional[Set[str]] = None) -> List[Dict]:
+        """Scrape free books from archive.org while avoiding duplicate identifiers"""
         logger.info(f"Scraping archive.org for {max_books} books...")
         
-        books = []
+        books: List[Dict] = []
         page = 1
+        seen_ids: Set[str] = set()
         
         # Search for free PDF books
         search_url = "https://archive.org/advancedsearch.php"
@@ -116,14 +117,21 @@ class BookScraper:
                     if not identifier:
                         continue
                     
+                    if identifier in seen_ids:
+                        continue
+                    
+                    if existing_ids and identifier in existing_ids:
+                        continue
+                    
                     # Get detailed metadata
                     book_data = self.get_archive_org_book_details(identifier)
                     if book_data:
                         books.append(book_data)
+                        seen_ids.add(identifier)
                         logger.info(f"Scraped {len(books)}/{max_books}: {book_data.get('title', 'Unknown')}")
                 
                 page += 1
-                time.sleep(1)  # Be respectful to the server
+                time.sleep(0.2)  # Reduced delay for faster scraping
                 
             except Exception as e:
                 logger.error(f"Error scraping archive.org page {page}: {e}")
@@ -358,7 +366,7 @@ class BookScraper:
                         book['local_cover_path'] = str(cover_path)
                 
                 # Add delay to be respectful
-                time.sleep(0.5)
+                time.sleep(0.1)  # Reduced delay
                 
             except Exception as e:
                 logger.error(f"Error downloading files for book {i}: {e}")
@@ -419,19 +427,42 @@ class BookScraper:
         return zip_path
     
     def run_full_scraping(self, target_books: int = 1000, download_files: bool = True):
-        """Run complete scraping process"""
+        """Run complete scraping process and ensure we reach the requested target"""
         logger.info(f"Starting full scraping process for {target_books} books...")
         
-        all_books = []
+        all_books: List[Dict] = []
+        seen_ids: Set[str] = set()
         
-        # Scrape from different sources
-        archive_books = self.scrape_archive_org(min(target_books // 2, 600))
-        all_books.extend(archive_books)
+        def add_books(source_name: str, books: List[Dict]) -> int:
+            added = 0
+            for book in books:
+                identifier = book.get('identifier')
+                if not identifier or identifier in seen_ids:
+                    continue
+                seen_ids.add(identifier)
+                all_books.append(book)
+                added += 1
+            logger.info(f"{source_name}: added {added} new books (total: {len(all_books)})")
+            return added
         
+        # First pass: archive.org (roughly half of the target, but at least 500)
+        primary_archive_target = min(max(target_books // 2, 500), target_books)
+        archive_books = self.scrape_archive_org(primary_archive_target, existing_ids=seen_ids)
+        add_books("archive.org", archive_books)
+        
+        # Second pass: Project Gutenberg for the remaining books
         if len(all_books) < target_books:
             remaining = target_books - len(all_books)
-            gutenberg_books = self.scrape_gutenberg(min(remaining, 300))
-            all_books.extend(gutenberg_books)
+            gutenberg_books = self.scrape_gutenberg(remaining)
+            add_books("gutenberg.org", gutenberg_books)
+        
+        # Final top-up from archive.org if needed
+        if len(all_books) < target_books:
+            remaining = target_books - len(all_books)
+            if remaining > 0:
+                logger.info(f"Need {remaining} more books; continuing archive.org scraping...")
+                extra_archive = self.scrape_archive_org(remaining, existing_ids=seen_ids)
+                add_books("archive.org (top-up)", extra_archive)
         
         logger.info(f"Total books scraped: {len(all_books)}")
         
