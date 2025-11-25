@@ -22,27 +22,58 @@ Install the required packages:
 
 ## 🛠️ Usage
 
-### Basic Usage
+### Quick Start - Import 1000+ Books
 
-```python
-# Clone or upload the script to your Colab notebook
-from book_scraper import BookScraper
+**Single command to import everything:**
 
-# Initialize the scraper
-scraper = BookScraper(download_dir="/content/books")
-
-# Run full scraping process
-books, csv_path, zip_path = scraper.run_full_scraping(target_books=1000)
+```bash
+python3 run_import.py
 ```
 
-### Quick Start in Google Colab
+This will:
+- ✅ Import metadata for 1000+ books from Archive.org and Project Gutenberg
+- ✅ Download PDF files for all available books (~900-1000 PDFs)
+- ✅ Download HD cover images (~700-850 covers)
+- ✅ Create a complete CSV database with all metadata
+- ✅ Generate a zip archive with all files
+- ✅ Produce comprehensive statistics
+
+**Expected runtime:** 30-60 minutes
+
+**Output location:** `books/` directory with:
+- `books_database.csv` - Complete database with 1000+ books
+- `free_books_collection.zip` - All files packaged
+- `pdfs/` - Downloaded PDF books
+- `covers/` - HD cover images
+- `import_summary.json` - Import statistics
+
+### Google Colab
 
 ```python
 # Install dependencies
-!pip install requests beautifulsoup4 pandas
+!pip install requests beautifulsoup4 pandas lxml
 
-# Run the scraper
-!python book_scraper.py
+# Run the import
+!python3 run_import.py
+
+# Or use the Colab notebook
+# Upload Free_Books_Scraper_Colab.ipynb and run all cells
+```
+
+### Python API
+
+```python
+from book_scraper import BookScraper
+
+# Initialize the scraper
+scraper = BookScraper(download_dir="/path/to/books")
+
+# Run full scraping process for 1000+ books
+books, csv_path, zip_path = scraper.run_full_scraping(target_books=1000)
+
+print(f"Imported {len(books)} books")
+print(f"CSV: {csv_path}")
+print(f"ZIP: {zip_path}")
 ```
 
 ### Custom Scraping
