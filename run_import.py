@@ -32,8 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-books",
         type=int,
-        default=1000,
-        help="Total number of books to scrape (default: 1000)",
+        default=250,
+        help="Total number of books to scrape (default: 250)",
     )
     parser.add_argument(
         "--languages",
