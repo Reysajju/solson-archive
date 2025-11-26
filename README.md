@@ -22,30 +22,46 @@ Install the required packages:
 
 ## 🛠️ Usage
 
-### Quick Start - Import 1000+ Books
+### Quick Start – Import 250 English Books (metadata-first)
 
-**Single command to import everything:**
+**Single command to reproduce the curated snapshot shipped in this repo:**
 
 ```bash
-python3 run_import.py
+python3 run_import.py --target-books 250 --languages en --skip-downloads
 ```
 
-This will:
-- ✅ Import metadata for 1000+ books from Archive.org and Project Gutenberg
-- ✅ Download PDF files for all available books (~900-1000 PDFs)
-- ✅ Download HD cover images (~700-850 covers)
-- ✅ Create a complete CSV database with all metadata
-- ✅ Generate a zip archive with all files
-- ✅ Produce comprehensive statistics
+This lightweight run:
+- ✅ Imports metadata for 250 popular English titles (Archive.org)
+- ✅ Saves the refreshed CSV database and summary JSON
+- ✅ Generates statistics for languages, sources, and categories
+- ✅ Skips heavy PDF/cover downloads for a faster turnaround
 
-**Expected runtime:** 30-60 minutes
+**Expected runtime:** ~4 minutes (metadata only)
 
 **Output location:** `books/` directory with:
-- `books_database.csv` - Complete database with 1000+ books
-- `free_books_collection.zip` - All files packaged
-- `pdfs/` - Downloaded PDF books
-- `covers/` - HD cover images
+- `books_database.csv` - Complete database with 250 English books
+- `free_books_collection.zip` - Packaged snapshot (CSV only when downloads are skipped)
+- `pdfs/` - Downloaded PDF books (empty if `--skip-downloads` is used)
+- `covers/` - HD cover images (empty if `--skip-downloads` is used)
 - `import_summary.json` - Import statistics
+
+> Want the original 1000+ book marathon with PDFs and covers? Increase `--target-books`, remove `--skip-downloads`, and optionally expand `--languages`.
+
+### Language filtering & metadata-only runs
+
+You can now fine-tune the import directly from the CLI:
+
+```bash
+python3 run_import.py \
+  --target-books 800 \
+  --languages en \
+  --skip-downloads \
+  --download-dir /path/to/custom/location
+```
+
+- `--languages` — Comma-separated ISO codes (e.g., `en,fr`). Leave empty to allow every language.
+- `--skip-downloads` — Collect metadata only and skip PDF/cover downloads.
+- `--download-dir` — Store outputs anywhere (defaults to `<repo>/books`).
 
 ### Google Colab
 
@@ -68,7 +84,7 @@ from book_scraper import BookScraper
 # Initialize the scraper
 scraper = BookScraper(download_dir="/path/to/books")
 
-# Run full scraping process for 1000+ books
+# Run full scraping process for 1000+ books (example)
 books, csv_path, zip_path = scraper.run_full_scraping(target_books=1000)
 
 print(f"Imported {len(books)} books")

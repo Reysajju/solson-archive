@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class BookScraper:
-    def __init__(self, download_dir: str = "/content/books"):
+    def __init__(self, download_dir: str = "/content/books", language_filter: Optional[List[str]] = None):
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(exist_ok=True)
         
@@ -44,11 +44,24 @@ class BookScraper:
         for dir_path in [self.pdf_dir, self.covers_dir, self.metadata_dir]:
             dir_path.mkdir(exist_ok=True)
         
+        if language_filter:
+            normalized_languages = set()
+            for language in language_filter:
+                normalized = self.normalize_language(language)
+                if normalized:
+                    normalized_languages.add(normalized)
+            self.language_filter: Optional[Set[str]] = normalized_languages or None
+        else:
+            self.language_filter = None
+        
         self.books_data = []
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        
+        if self.language_filter:
+            logger.info("Language filter enabled: %s", ", ".join(sorted(self.language_filter)))
         
     def download_file(self, url: str, destination: Path, timeout: int = 30) -> bool:
         """Download a file from URL to destination path"""
@@ -78,6 +91,52 @@ class BookScraper:
             filename = filename[:200]
         return filename
     
+    def normalize_language(self, language_value: Optional[str]) -> str:
+        """Normalize language strings to consistent lowercase ISO-like values"""
+        if language_value is None:
+            return ''
+        lang = str(language_value).strip().lower()
+        if not lang:
+            return ''
+        replacements = {
+            'eng': 'en',
+            'english': 'en',
+            'en-us': 'en',
+            'en-gb': 'en',
+            'en-ca': 'en',
+            'en-au': 'en'
+        }
+        if lang in replacements:
+            return replacements[lang]
+        if lang.startswith('en-'):
+            return 'en'
+        return lang
+    
+    def _is_language_allowed(self, book: Dict) -> bool:
+        """Check if a book matches the configured language filter"""
+        if not self.language_filter:
+            return True
+        book_language = self.normalize_language(book.get('language', ''))
+        if not book_language:
+            book_language = 'en'
+        return book_language in self.language_filter
+    
+    def _build_archive_language_clause(self) -> Optional[str]:
+        """Build an archive.org query clause for the configured languages"""
+        if not self.language_filter:
+            return None
+        terms: Set[str] = set()
+        for lang in self.language_filter:
+            if not lang:
+                continue
+            terms.add(lang)
+            if lang == 'en':
+                terms.update({'english', 'eng'})
+        if not terms:
+            return None
+        joined_terms = " OR ".join([f'"{term}"' for term in sorted(terms)])
+        return f"language:({joined_terms})"
+    
     def scrape_archive_org(self, max_books: int = 500, existing_ids: Optional[Set[str]] = None) -> List[Dict]:
         """Scrape free books from archive.org while avoiding duplicate identifiers"""
         logger.info(f"Scraping archive.org for {max_books} books...")
@@ -88,11 +147,15 @@ class BookScraper:
         
         # Search for free PDF books
         search_url = "https://archive.org/advancedsearch.php"
+        base_query = "((collection:(opensource)) OR mediatype:(texts)) AND format:(pdf)"
+        language_clause = self._build_archive_language_clause()
+        if language_clause:
+            base_query = f"({base_query}) AND {language_clause}"
         
         while len(books) < max_books:
             try:
                 params = {
-                    'q': 'collection:(opensource) OR mediatype:(texts) AND format:(pdf)',
+                    'q': base_query,
                     'fl[]': ['identifier', 'title', 'description', 'creator', 'date', 'subject', 'download_count'],
                     'sort[]': 'downloads desc',
                     'rows': '100',
@@ -126,6 +189,8 @@ class BookScraper:
                     # Get detailed metadata
                     book_data = self.get_archive_org_book_details(identifier)
                     if book_data:
+                        if not self._is_language_allowed(book_data):
+                            continue
                         books.append(book_data)
                         seen_ids.add(identifier)
                         logger.info(f"Scraped {len(books)}/{max_books}: {book_data.get('title', 'Unknown')}")
@@ -148,30 +213,76 @@ class BookScraper:
             response.raise_for_status()
             
             metadata = response.json()
+            metadata_fields = metadata.get('metadata', {})
             
-            if metadata.get('metadata', {}).get('title') is None:
+            if metadata_fields.get('title') is None:
                 return None
+            
+            creator_field = metadata_fields.get('creator')
+            if isinstance(creator_field, list):
+                author = creator_field[0] if creator_field else ''
+            elif isinstance(creator_field, str):
+                author = creator_field
+            else:
+                author = ''
+            
+            isbn_field = metadata_fields.get('identifier-isbn')
+            if isinstance(isbn_field, list):
+                isbn_value = isbn_field[0] if isbn_field else ''
+            elif isinstance(isbn_field, str):
+                isbn_value = isbn_field
+            else:
+                isbn_value = ''
+            
+            language_field = metadata_fields.get('language')
+            language_value = ''
+            if isinstance(language_field, list):
+                for entry in language_field:
+                    if isinstance(entry, str) and entry.strip():
+                        language_value = entry
+                        break
+                    if isinstance(entry, dict):
+                        entry_value = entry.get('value')
+                        if entry_value:
+                            language_value = str(entry_value)
+                            break
+            elif isinstance(language_field, str):
+                language_value = language_field
+            language_normalized = self.normalize_language(language_value) or 'en'
+            
+            subjects_field = metadata_fields.get('subject', [])
+            if isinstance(subjects_field, str):
+                subjects_field = [subjects_field]
+            subjects_list: List[str] = []
+            if isinstance(subjects_field, list):
+                for subject in subjects_field:
+                    if isinstance(subject, str) and subject.strip():
+                        subjects_list.append(subject)
+                    elif isinstance(subject, dict):
+                        value = subject.get('value')
+                        if value:
+                            subjects_list.append(str(value))
             
             # Extract book data
             book_data = {
                 'source': 'archive.org',
                 'identifier': identifier,
-                'title': metadata['metadata'].get('title', ''),
-                'author': metadata['metadata'].get('creator', [''])[0] if metadata['metadata'].get('creator') else '',
-                'description': metadata['metadata'].get('description', ''),
-                'date': metadata['metadata'].get('date', ''),
-                'publisher': metadata['metadata'].get('publisher', ''),
-                'language': metadata['metadata'].get('language', 'en')[0] if metadata['metadata'].get('language') else 'en',
-                'subjects': ', '.join(metadata['metadata'].get('subject', [])),
-                'download_count': metadata.get('metadata', {}).get('download_count', 0),
+                'title': metadata_fields.get('title', ''),
+                'author': author,
+                'description': metadata_fields.get('description', ''),
+                'date': metadata_fields.get('date', ''),
+                'publisher': metadata_fields.get('publisher', ''),
+                'language': language_normalized,
+                'subjects': ', '.join(subjects_list),
+                'download_count': metadata_fields.get('download_count', 0),
                 'file_size': 0,
                 'pdf_url': '',
                 'cover_url': '',
                 'local_pdf_path': '',
                 'local_cover_path': '',
                 'categories': '',
-                'isbn': metadata['metadata'].get('identifier-isbn', [''])[0] if metadata['metadata'].get('identifier-isbn') else '',
-                'pages': metadata['metadata'].get('pages', ''),
+                'isbn': isbn_value,
+                'pages': metadata_fields.get('pages', ''),
                 'added_date': datetime.now().isoformat()
             }
             
@@ -197,13 +308,8 @@ class BookScraper:
             book_data['cover_url'] = cover_url or ''
             
             # Categorize based on subjects
-            subjects = metadata['metadata'].get('subject', [])
-            if subjects:
-                categories = []
-                for subject in subjects[:5]:  # Limit to first 5 subjects
-                    if isinstance(subject, str):
-                        categories.append(subject)
-                book_data['categories'] = ', '.join(categories)
+            if subjects_list:
+                book_data['categories'] = ', '.join(subjects_list[:5])
             
             return book_data
             
@@ -242,6 +348,8 @@ class BookScraper:
                     
                     book_data = self.get_gutenberg_book_details(book_id)
                     if book_data:
+                        if not self._is_language_allowed(book_data):
+                            continue
                         books.append(book_data)
                         logger.info(f"Scraped Gutenberg {len(books)}/{max_books}: {title}")
                 
@@ -272,6 +380,17 @@ class BookScraper:
             publisher = soup.find('dcterms:publisher')
             subject = soup.find_all('dcterms:subject')
             
+            language_value = ''
+            if language:
+                language_text = language.text.strip()
+                if language_text:
+                    language_value = language_text
+                else:
+                    language_node = language.find('rdf:value')
+                    if language_node and language_node.text:
+                        language_value = language_node.text.strip()
+            language_normalized = self.normalize_language(language_value) or 'en'
+            
             book_data = {
                 'source': 'gutenberg.org',
                 'identifier': book_id,
@@ -280,7 +399,7 @@ class BookScraper:
                 'description': description.text.strip() if description else '',
                 'date': '',
                 'publisher': publisher.text.strip() if publisher else 'Project Gutenberg',
-                'language': language.text.strip() if language else 'en',
+                'language': language_normalized,
                 'subjects': ', '.join([s.text.strip() for s in subject if s.text.strip()]),
                 'download_count': 0,
                 'file_size': 0,
@@ -440,6 +559,8 @@ class BookScraper:
                 if not identifier or identifier in seen_ids:
                     continue
                 seen_ids.add(identifier)
+                if not self._is_language_allowed(book):
+                    continue
                 all_books.append(book)
                 added += 1
             logger.info(f"{source_name}: added {added} new books (total: {len(all_books)})")

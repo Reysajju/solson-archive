@@ -1,0 +1,20 @@
+{
+  "import_timestamp": "2025-11-26T03:14:36.905719Z",
+  "target_books": 250,
+  "scraped_books": 250,
+  "books_with_pdfs": 0,
+  "books_with_covers": 0,
+  "books_with_descriptions": 197,
+  "books_with_categories": 193,
+  "csv_database": "/home/engine/project/books/books_database.csv",
+  "zip_archive": "/home/engine/project/books/free_books_collection.zip",
+  "elapsed_seconds": 246,
+  "language_filter": [
+    "en"
+  ],
+  "download_files": false,
+  "sources": {
+    "archive_org": 250,
+    "gutenberg_org": 0
+  }
+}

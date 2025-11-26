@@ -1,0 +1,23 @@
+{
+  "total_books": 250,
+  "books_with_pdf": 0,
+  "books_with_covers": 0,
+  "sources": {
+    "archive.org": 250
+  },
+  "languages": {
+    "en": 250
+  },
+  "top_categories": {
+    "mirror": 8,
+    "pdf.yt": 8,
+    "sheet music": 7,
+    "Banasthali": 5,
+    "BDC": 4,
+    "data.gov.in;standardsbis.in;public.resource.org": 4,
+    "Folk poetry": 4,
+    "English language": 3,
+    "murder": 2,
+    "LIT": 2
+  }
+}
